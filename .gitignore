@@ -1,0 +1,7 @@
+node_modules
+.vercel
+*.zip
+ferramentas/tmp
+_pacote
+_pacote
+_2022_teste

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Resultado RJ · Votação detalhada</title>
+<meta name="description" content="Votação detalhada do Rio de Janeiro por município, zona, local e seção.">
+<meta name="theme-color" content="#1515a3">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="img/icon-192.png">
+<link rel="apple-touch-icon" href="img/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preload" href="fonts/Anton-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/Archivo-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="hero" id="hero">
+  <div class="hero-in">
+    <div class="topo">
+      <a class="voltar" id="voltar" href="#/" aria-label="Voltar" hidden>
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <span class="pill" id="pill">ELEIÇÕES · RJ</span>
+      <button class="icone" id="btnBusca" aria-label="Buscar">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <h1 class="titulo" id="titulo">RESULTADO <em>DETALHADO</em></h1>
+    <p class="sub" id="sub">Votação por município, zona, local e seção.</p>
+  </div>
+</header>
+<nav class="barra" id="barra">
+  <div class="chips" id="cargos" role="tablist"></div>
+  <div class="turnos" id="turnos" hidden></div>
+</nav>
+<main id="app" class="app"><div class="carregando"><span></span></div></main>
+
+<div class="busca" id="busca" hidden>
+  <div class="busca-in">
+    <div class="busca-campo">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+      <input id="q" type="search" placeholder="Candidato, número ou município" autocomplete="off" enterkeyhint="search">
+      <button class="fechar" id="fecharBusca" aria-label="Fechar">Fechar</button>
+    </div>
+    <div id="resBusca" class="res-busca"></div>
+  </div>
+</div>
+<footer class="rodape">Fonte: TSE · Portal de Dados Abertos · <span id="gerado"></span></footer>
+<script src="app.js" defer></script>
+</body>
+</html>

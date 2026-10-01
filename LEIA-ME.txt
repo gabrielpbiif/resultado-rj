@@ -1,0 +1,45 @@
+RESULTADO RJ — votação detalhada (app/PWA)
+===========================================
+
+O que é: site estático (sem servidor, sem banco) que mostra o resultado do TSE no RJ por
+município > zona > local de votação > seção, com porcentagem, foto e situação (eleito/suplente)
+de cada candidato, e a página de cada candidato com os votos por município, zona e local.
+Instala no celular como app ("Adicionar à tela inicial") e abre offline o que já foi visto.
+
+Agora está no MODELO 2026: candidatos (com vice/suplentes), fotos, 92 municípios, zonas,
+locais (endereço, bairro, mapa) e 37.675 seções com eleitores aptos, votos zerados ("Aguardando o TSE").
+Quando o TSE publicar o resultado, os dados são gerados de novo e é só fazer o push.
+O teste com 2022 ficou em _2022_teste/ (fora do git e da Vercel).
+
+Pastas
+  index.html, styles.css, app.js   o app
+  sw.js, manifest.webmanifest      PWA (instalar no celular / offline)
+  vercel.json                      cabeçalhos de segurança e cache
+  fonts/                           Anton + Archivo (mesmas da colinha), locais
+  img/f/<SQ>.webp                  fotos dos candidatos (TSE), 180x240
+  data/                            resultado gerado (não editar à mão)
+  ferramentas/processar.py         gera data/ a partir dos arquivos do TSE (não vai para o site)
+
+Publicar (primeira vez)
+  1. GitHub: criar repositório (ex.: resultado-rj), privado.
+  2. PowerShell nesta pasta:
+       git init
+       git add -A
+       git commit -m "Resultado RJ"
+       git branch -M main
+       git remote add origin https://github.com/gabrielpbiif/resultado-rj.git
+       git push -u origin main
+  3. Vercel > Add New Project > importar o repositório > Framework: Other > Deploy.
+
+Atualizar com o resultado de 2026
+  Arquivos do Portal de Dados Abertos do TSE (dadosabertos.tse.jus.br > Resultados 2026):
+    votacao_secao_2026_RJ.zip  (+ votacao_secao_2026_BR.zip para Presidente)
+    detalhe_votacao_secao_2026.zip
+    consulta_cand_2026.zip   (atualizado depois da eleição: traz eleito/suplente)
+  Comando (Python 3 + pip install duckdb pillow):
+    python ferramentas/processar.py --ano 2026 ^
+      --votacao votacao_secao_2026_RJ.zip votacao_secao_2026_BR.zip ^
+      --detalhe detalhe_votacao_secao_2026.zip --cand consulta_cand_2026.zip ^
+      --secoes eleitorado_local_votacao_2026.zip --fotos img/f --saida .
+  Depois: git add -A; git commit -m "Resultado 2026"; git push
+  (ou pedir ao Claude, que baixa direto do TSE, processa e coloca aqui.)
