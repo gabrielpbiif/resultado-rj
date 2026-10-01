@@ -90,6 +90,7 @@ def main():
     ap.add_argument("--saida", required=True)
     ap.add_argument("--tmp", default=None)
     ap.add_argument("--sem-fotos", action="store_true")
+    ap.add_argument("--ficticio", action="store_true", help="marca os dados como TESTE no app")
     a = ap.parse_args()
 
     tmp = a.tmp or tempfile.mkdtemp(prefix="tse_")
@@ -286,7 +287,9 @@ def main():
     idx = {"ano": a.ano, "uf": UF, "gerado": datetime.now(BRT).strftime("%d/%m/%Y %H:%M"),
            "turnos": {}, "partidos": {str(k): [v, CORES.get(k, "#5b6475"), fed_de.get(k, 0)] for k, v in partidos.items()},
            "fed": {str(k): [v[0], v[1], CORES.get(next((np for np in v[2] if partidos.get(np, "").upper().replace(" ", "") == v[3][0].upper().replace(" ", "")), v[2][0]), "#5b6475"), v[2]] for k, v in feds.items()},
-           "mun": [], "fotos": len(com_foto), "modelo": modelo}
+           "mun": [], "fotos": len(com_foto), "modelo": modelo, "ficticio": a.ficticio}
+    pl = os.path.join(a.saida, "img", "p")
+    idx["logos"] = sorted(int(f.split(".")[0]) for f in os.listdir(pl) if f.endswith(".webp")) if os.path.isdir(pl) else []
     dump(os.path.join(data, "vices.json"), {str(c): {str(nr): v for nr, v in d.items()} for c, d in vices.items()})
     aptos_mun = dict(con.execute("""select mun, sum(aptos) from st where turno=(select min(turno) from st)
         and cargo=(select min(cargo) from st where turno=(select min(turno) from st)) group by mun""").fetchall())

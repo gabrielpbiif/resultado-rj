@@ -87,6 +87,7 @@ function selo(sit) {
 /* ---------------- blocos de tela ---------------- */
 function stats(tot, extra = "") {
   const [aptos, comp, abst, val, br, nul] = tot;
+  const tv = val + br + nul; // no Senado com 2 vagas cada eleitor dá 2 votos
   const temAptos = aptos > 0;
   if (!comp) return `<div class="stats">
     <div class="stat dest l2"><span>Eleitores aptos</span><b>${n(aptos)}</b><small>${n(tot[7])} ${tot[7] === 1 ? "seção" : "seções"}</small></div>
@@ -95,9 +96,9 @@ function stats(tot, extra = "") {
     ${temAptos ? `<div class="stat dest l2"><span>Comparecimento</span><b>${pct(comp, aptos)}</b><small>${n(comp)} de ${n(aptos)}</small></div>
     <div class="stat"><span>Abstenção</span><b>${pct(abst, aptos)}</b><small>${n(abst)}</small></div>`
       : `<div class="stat dest l2"><span>Votos</span><b>${n(comp)}</b><small>total</small></div>`}
-    <div class="stat"><span>Válidos</span><b>${pct(val, comp)}</b><small>${n(val)}</small></div>
-    <div class="stat"><span>Brancos</span><b>${pct(br, comp)}</b><small>${n(br)}</small></div>
-    <div class="stat"><span>Nulos</span><b>${pct(nul, comp)}</b><small>${n(nul)}</small></div>
+    <div class="stat"><span>Válidos</span><b>${pct(val, tv)}</b><small>${n(val)}</small></div>
+    <div class="stat"><span>Brancos</span><b>${pct(br, tv)}</b><small>${n(br)}</small></div>
+    <div class="stat"><span>Nulos</span><b>${pct(nul, tv)}</b><small>${n(nul)}</small></div>
   </div>${extra}`;
 }
 function cab(num, txt, dir = "") {
@@ -108,6 +109,8 @@ function migalha(partes) {
 }
 
 /* ---------- partidos e federações ---------- */
+const temLogo = np => IDX.logoSet && IDX.logoSet.has(+np);
+const logo = (np, cls = "lg") => temLogo(np) ? `<img class="${cls}" src="img/p/${+np}.webp" alt="${esc(siglaPartido(np))}" loading="lazy">` : "";
 const fedDe = np => ((IDX.partidos[np] || [])[2]) || 0;
 function grupoDe(np, modo) {
   const f = fedDe(np);
@@ -131,6 +134,14 @@ function barraVerPor() {
   }
   return h;
 }
+function sigGrupo(g, tam) {
+  const id = +g.k.slice(1);
+  if (!g.fed) return temLogo(id) ? `<span class="sig logo">${logo(id)}</span>` : `<span class="sig${tam(g.nome)}">${esc(g.nome)}</span>`;
+  const membros = ((IDX.fed[id] || [])[3] || []);
+  const comLogo = membros.filter(temLogo);
+  if (comLogo.length) return `<span class="sig logo multi n${Math.min(comLogo.length, 3)}">${comLogo.slice(0, 3).map(np => logo(np)).join("")}</span>`;
+  return `<span class="sig p">${esc(g.sigla).replace(/\//g, " ")}</span>`;
+}
 function rankingGrupos(cm, votos, validos, modo) {
   const acc = new Map();
   const soma = (k) => { if (!acc.has(k)) acc.set(k, { k, nom: 0, leg: 0, nc: 0, por: {} }); return acc.get(k); };
@@ -146,7 +157,7 @@ function rankingGrupos(cm, votos, validos, modo) {
   const tam = sg => sg.length <= 4 ? "" : sg.length <= 7 ? " m" : " p";
   return `<div class="lista">${rows.map((g, i) => `<button class="cand grupo" data-grupo="${g.k}" style="--cor:${g.cor}">
       <span class="pos">${g.tot ? i + 1 + "º" : ""}</span>
-      <span class="sig${g.fed ? " p" : tam(g.nome)}">${g.fed ? esc(g.sigla).replace(/\//g, " ") : esc(g.nome)}</span>
+      ${sigGrupo(g, tam)}
       <span class="meio"><span class="nome">${esc(g.fed ? g.nome : g.nome)}</span>
         <span class="info">${g.fed ? `<span class="part">Federação</span>` : `<span class="part">Partido</span>`}
           <span>${n(g.nc)} ${g.nc === 1 ? "candidato" : "candidatos"}${validos && g.leg ? ` · legenda ${n(g.leg)}` : ""}</span></span>
@@ -391,7 +402,7 @@ async function telaCand(nr, cdFiltro) {
       <div class="ficha">${foto(c, "foto g")}
         <div class="dados"><span class="faixa" style="background:${CORES_CARGO[estado.c]}">${esc(IDX.cargoNome[estado.c])}</span>
           <div class="nm">${esc(c.nome)}</div><div class="info"><span class="part">${esc(c.partido)}</span>${selo(c.sit)}</div>
-          <div class="nrbox" style="margin-top:10px"><span class="nr">${nr}</span></div></div></div>
+          <div class="nrbox" style="margin-top:10px"><span class="nr">${nr}</span>${logo(c.np, "lg-ficha")}</div></div></div>
       ${vices.length ? `<div class="vices">${vices.map(([cg, nmv, sg]) => `<span><em>${ROT_VICE[cg] || "Vice"}</em>${esc(titulo(nmv))} <small>${esc(sg)}</small></span>`).join("")}</div>` : ""}
       <button class="favbtn${fav ? " on" : ""}" id="fav" style="margin-top:14px"><span class="ck"></span>${fav ? "Acompanhando" : "Acompanhar"}</button>
     </section>
@@ -545,9 +556,15 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") fecharBusca(
     IDX = await fetch("data/index.json", { cache: "no-cache" }).then(r => r.json());
     VER = (IDX.gerado || "").replace(/\D/g, "");
     IDX.munNome = new Map(IDX.mun.map(m => [m[0], m[1]]));
+    IDX.logoSet = new Set(IDX.logos || []);
     IDX.cargoNome = {};
     Object.values(IDX.turnos).forEach(l => l.forEach(c => { IDX.cargoNome[c.cd] = c.nome; }));
     $("#pill").textContent = `ELEIÇÕES ${IDX.ano} · RJ`;
+    if (IDX.ficticio) {
+      $("#pill").textContent = "TESTE · DADOS FICTÍCIOS";
+      $("#pill").classList.add("teste");
+      $("#barra").insertAdjacentHTML("beforebegin", `<div class="faixa-teste">VOTAÇÃO FICTÍCIA — SÓ PARA TESTE DO APP. NÃO É RESULTADO.</div>`);
+    }
     $("#gerado").textContent = "dados processados em " + IDX.gerado;
     if (!location.hash) {
       try { const u = JSON.parse(localStorage.getItem("ult") || "null"); if (u) { estado.t = u.t; estado.c = u.c; } } catch {}
