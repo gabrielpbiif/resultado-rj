@@ -7,13 +7,13 @@ const NF = new Intl.NumberFormat("pt-BR");
 const CORES_CARGO = { 7: "#16a0e6", 6: "#e30613", 5: "#e30613", 3: "#1717a6", 1: "#e30613" };
 const CURTO = { 7: "Dep. Estadual", 6: "Dep. Federal", 5: "Senador", 3: "Governador", 1: "Presidente" };
 const MAJ = new Set([1, 3, 5]);
-const FAV_PADRAO = ["7:13567", "5:131", "6:1330", "3:55", "1:13"];
+const FAV_PADRAO = ["7:13567", "5:131", "6:1300", "3:55", "1:13"];
 const PASSO = 20;
 const zerado = () => IDX && IDX.modelo;
 
 let IDX = null, VER = "";
 const cache = new Map();
-const estado = { t: 1, c: 7, aba: {}, ordMun: "nome", mostrar: {} };
+const estado = { t: 1, c: 7, aba: {}, ordMun: "nome", mostrar: {}, verPor: "cand", grupo: "" };
 
 /* ---------------- utilidades ---------------- */
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -46,12 +46,12 @@ const locaisArq = () => json("data/locais.json");
 
 /* favoritos (acompanhados) — só neste aparelho */
 let FAVS;
-try { FAVS = new Set(JSON.parse(localStorage.getItem("favs") || "null") || FAV_PADRAO); } catch { FAVS = new Set(FAV_PADRAO); }
+try { FAVS = new Set(JSON.parse(localStorage.getItem("favs2") || "null") || FAV_PADRAO); } catch { FAVS = new Set(FAV_PADRAO); }
 const ehFav = nr => FAVS.has(estado.c + ":" + nr);
 function alternaFav(nr) {
   const k = estado.c + ":" + nr;
   FAVS.has(k) ? FAVS.delete(k) : FAVS.add(k);
-  try { localStorage.setItem("favs", JSON.stringify([...FAVS])); } catch {}
+  try { localStorage.setItem("favs2", JSON.stringify([...FAVS])); } catch {}
 }
 
 /* candidatos do cargo indexados por número */
@@ -107,14 +107,69 @@ function migalha(partes) {
   return `<nav class="migalha">${partes.map((p, i) => (i < partes.length - 1 && p[1] ? `<a href="${p[1]}">${esc(p[0])}</a><i>›</i>` : `<span>${esc(p[0])}</span>`)).join("")}</nav>`;
 }
 
+/* ---------- partidos e federações ---------- */
+const fedDe = np => ((IDX.partidos[np] || [])[2]) || 0;
+function grupoDe(np, modo) {
+  const f = fedDe(np);
+  return modo === "fed" && f ? "f" + f : "p" + np;
+}
+function infoGrupo(k) {
+  const id = +k.slice(1);
+  if (k[0] === "f") { const f = IDX.fed[id] || ["Federação " + id, "", "#5b6475"]; return { nome: f[0], sigla: f[1], cor: f[2], fed: true }; }
+  const sg = siglaPartido(id), f = fedDe(id);
+  return { nome: sg, sigla: String(id), cor: corPartido(id), fed: false, emFed: f ? (IDX.fed[f] || [""])[0] : "" };
+}
+function noGrupo(np, k) { return k[0] === "f" ? fedDe(np) === +k.slice(1) : np === +k.slice(1); }
+function barraVerPor() {
+  const vp = estado.verPor, temFed = IDX.fed && Object.keys(IDX.fed).length;
+  let h = `<div class="verpor" role="tablist"><span class="rotulo">Ver por</span>
+    <button data-verpor="cand" class="${vp === "cand" ? "on" : ""}">Por candidato</button>
+    <button data-verpor="fed" class="${vp !== "cand" ? "on" : ""}">Por partido / federação</button></div>`;
+  if (estado.grupo && vp === "cand") {
+    const g = infoGrupo(estado.grupo);
+    h += `<div class="filtro-ativo" style="--cor:${g.cor}"><span>Só <b>${esc(g.nome)}</b>${g.fed ? ` <small>${esc(g.sigla)}</small>` : ""}</span><button data-limpa aria-label="Tirar filtro">✕ Tirar filtro</button></div>`;
+  }
+  return h;
+}
+function rankingGrupos(cm, votos, validos, modo) {
+  const acc = new Map();
+  const soma = (k) => { if (!acc.has(k)) acc.set(k, { k, nom: 0, leg: 0, nc: 0, por: {} }); return acc.get(k); };
+  const somaP = (g, np, v) => { g.por[np] = (g.por[np] || 0) + v; };
+  for (const [nr, v] of votos) {
+    if (nr > 0) { const c = cm.get(nr); const np = c ? c.np : +String(nr).slice(0, 2); const g = soma(grupoDe(np, modo)); g.nom += v; somaP(g, np, v); if (v) g.nc++; }
+    else { const g = soma(grupoDe(-nr, modo)); g.leg += v; somaP(g, -nr, v); }
+  }
+  if (!validos) for (const c of cm.values()) { const g = soma(grupoDe(c.np, modo)); g.nc++; }
+  const rows = [...acc.values()].map(g => ({ ...g, tot: g.nom + g.leg, ...infoGrupo(g.k) }))
+    .sort((a, b) => b.tot - a.tot || a.nome.localeCompare(b.nome, "pt"));
+  const max = rows.length ? rows[0].tot || 1 : 1;
+  const tam = sg => sg.length <= 4 ? "" : sg.length <= 7 ? " m" : " p";
+  return `<div class="lista">${rows.map((g, i) => `<button class="cand grupo" data-grupo="${g.k}" style="--cor:${g.cor}">
+      <span class="pos">${g.tot ? i + 1 + "º" : ""}</span>
+      <span class="sig${g.fed ? " p" : tam(g.nome)}">${g.fed ? esc(g.sigla).replace(/\//g, " ") : esc(g.nome)}</span>
+      <span class="meio"><span class="nome">${esc(g.fed ? g.nome : g.nome)}</span>
+        <span class="info">${g.fed ? `<span class="part">Federação</span>` : `<span class="part">Partido</span>`}
+          <span>${n(g.nc)} ${g.nc === 1 ? "candidato" : "candidatos"}${validos && g.leg ? ` · legenda ${n(g.leg)}` : ""}</span></span>
+        ${g.fed && validos ? `<span class="membros">${Object.entries(g.por).sort((a, b) => b[1] - a[1]).map(([np, v]) => `${esc(siglaPartido(+np))} <b>${n(v)}</b>`).join(" · ")}</span>` : ""}
+        ${g.fed && !validos ? `<span class="membros">${esc(g.sigla.replace(/\//g, " · "))}</span>` : ""}
+        ${validos ? `<span class="barra-v"><i style="width:${(100 * g.tot / max).toFixed(1)}%"></i></span>` : ""}</span>
+      ${validos ? `<span class="votos"><b>${pct(g.tot, validos)}</b><span>${n(g.tot)}</span><small>votos</small></span>` : ""}</button>`).join("")
+    || `<div class="vazio">Sem votos.</div>`}</div>
+    <p class="nota">Federação conta como um partido só (soma dos partidos dela, com legenda). Toque para ver só os candidatos dela aqui. % sobre os votos válidos deste lugar.</p>`;
+}
+
 /** Ranking: votos = [[nr, v]] (nr negativo = legenda) */
 function ranking(cm, votos, validos, id, opts = {}) {
+  const topo = opts.semFiltro ? "" : barraVerPor();
+  if (!opts.semFiltro && estado.verPor !== "cand") return topo + rankingGrupos(cm, votos, validos, "fed");
+  const grp = opts.semFiltro ? "" : estado.grupo;
+  if (grp) votos = votos.filter(([nr]) => { const np = nr > 0 ? ((cm.get(nr) || {}).np ?? +String(nr).slice(0, 2)) : -nr; return noGrupo(np, grp); });
   let cands = votos.filter(x => x[0] > 0);
-  if (!cands.length && !validos) cands = [...cm.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt")).map(c => [c.nr, 0]);
+  if (!cands.length && !validos) cands = [...cm.values()].filter(c => !grp || noGrupo(c.np, grp)).sort((a, b) => a.nome.localeCompare(b.nome, "pt")).map(c => [c.nr, 0]);
   const legs = votos.filter(x => x[0] < 0);
   const max = cands.length ? cands[0][1] : 1;
   const qtd = MAJ.has(estado.c) ? cands.length : (estado.mostrar[id] || (opts.passo || PASSO));
-  const favs = cands.map((x, i) => [x, i]).filter(([x]) => ehFav(x[0]));
+  const favs = grp ? [] : cands.map((x, i) => [x, i]).filter(([x]) => ehFav(x[0]));
   const linha = ([nr, v], i) => {
     const c = cm.get(nr) || { nr, nome: "Número " + nr, partido: "", np: +String(nr).slice(0, 2) };
     return `<a class="cand${ehFav(nr) ? " fav" : ""}" href="#/t${estado.t}/c${estado.c}/cand/${nr}" style="--cor:${corPartido(c.np)}">
@@ -124,7 +179,7 @@ function ranking(cm, votos, validos, id, opts = {}) {
         <span class="barra-v"><i style="width:${(100 * v / max).toFixed(1)}%"></i></span></span>
       ${validos ? `<span class="votos"><b>${pct(v, validos)}</b><span>${n(v)}</span><small>votos</small></span>` : ""}</a>`;
   };
-  let h = "";
+  let h = topo;
   if (favs.length && !MAJ.has(estado.c) && opts.favTopo !== false) {
     h += `<div class="rotulo" style="margin:0 2px 8px">Acompanhados aqui</div><div class="lista" style="margin-bottom:16px">${favs.map(([x, i]) => linha(x, i)).join("")}</div>
       <div class="rotulo" style="margin:0 2px 8px">Ranking</div>`;
@@ -178,8 +233,8 @@ async function telaEstado() {
         <span class="pos">${c.votos ? c.pos + "º" : ""}</span>${foto(c)}<span class="meio"><span class="nome">${esc(c.nome)}</span>
         <span class="info"><span class="part">${esc(c.partido)}</span>${c.nr}${selo(c.sit)}</span></span>
         ${val ? `<span class="votos"><b>${pct(c.votos, val)}</b><span>${n(c.votos)}</span><small>votos</small></span>` : ""}</a>`).join("")}</div></section>` : ""}
-    <section class="card">${cab(favsDoCargo.length ? 3 : 2, "Candidatos", `${n(d.cand.length)} ${zerado() ? "candidatos" : "com voto"}${vagasTxt()}`)}
-      <label class="campo"><svg viewBox="0 0 24 24" width="18" height="18"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+    <section class="card">${cab(favsDoCargo.length ? 3 : 2, "Votação", `${n(d.cand.length)} ${zerado() ? "candidatos" : "com voto"}${vagasTxt()}`)}
+      <label class="campo"${estado.verPor !== "cand" ? " hidden" : ""}><svg viewBox="0 0 24 24" width="18" height="18"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
       <input id="fCand" type="search" placeholder="Filtrar por nome, número ou partido" autocomplete="off"></label>
       <div id="rk">${ranking(cm, votos, val, "est", { selo: true, favTopo: false })}</div></section>
     <section class="card">${cab(favsDoCargo.length ? 4 : 3, "Municípios", "92")}
@@ -228,7 +283,7 @@ async function telaMun(cd) {
     }).join("") + `</div>`;
   app.innerHTML = `${migalha([["RJ", `#/t${estado.t}/c${estado.c}`], [nm]])}
     <section class="card">${cab(1, esc(nm), `${n(d.tot[7])} seções`)}${stats(d.tot)}</section>
-    <section class="card">${abas("mun", [["cand", "Candidatos"], ["zona", `Zonas (${d.z.length})`], ["local", `Locais (${d.l.length})`]])}${corpo}</section>`;
+    <section class="card">${abas("mun", [["cand", "Votação"], ["zona", `Zonas (${d.z.length})`], ["local", `Locais (${d.l.length})`]])}${corpo}</section>`;
   filtroLista("#fLoc", "#lLoc .linha");
 }
 
@@ -248,7 +303,7 @@ async function telaZona(cd, z) {
     }).join("");
   app.innerHTML = `${migalha([["RJ", `#/t${estado.t}/c${estado.c}`], [nm, `#/t${estado.t}/c${estado.c}/m/${cd}`], ["Zona " + z]])}
     <section class="card">${cab(1, "Zona " + z, `${n(tot[7])} seções`)}${stats(tot)}</section>
-    <section class="card">${abas("zona", [["cand", "Candidatos"], ["local", `Locais (${dz.l.length})`]])}${corpo}</section>`;
+    <section class="card">${abas("zona", [["cand", "Votação"], ["local", `Locais (${dz.l.length})`]])}${corpo}</section>`;
 }
 
 async function telaLocal(cd, z, lv) {
@@ -270,7 +325,7 @@ async function telaLocal(cd, z, lv) {
     <section class="card">${cab(1, "Local de votação", `${secs.length} seções`)}
       <p style="margin:-6px 0 12px;font-size:13.5px;color:var(--cinza)">${esc(titulo(en))}${bairro ? " · " + esc(titulo(bairro)) : ""}<br><a class="mapa" href="${mapa}" target="_blank" rel="noopener noreferrer">
       <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 22s7-6.2 7-12a7 7 0 10-14 0c0 5.8 7 12 7 12z" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="10" r="2.6" fill="currentColor"/></svg>Abrir no mapa</a></p>${stats(tot)}</section>
-    <section class="card">${abas("local", [["cand", "Candidatos"], ["secao", `Seções (${secs.length})`]])}${corpo}</section>`;
+    <section class="card">${abas("local", [["cand", "Votação"], ["secao", `Seções (${secs.length})`]])}${corpo}</section>`;
 }
 
 async function telaSecao(cd, z, s) {
@@ -457,6 +512,11 @@ document.addEventListener("click", e => {
   if (a) { estado.aba[a.dataset.aba] = a.dataset.k; render(); return; }
   const m = e.target.closest("[data-mais]");
   if (m) { estado.mostrar[m.dataset.mais] = (estado.mostrar[m.dataset.mais] || PASSO) + 60; render(); return; }
+  const vp = e.target.closest("[data-verpor]");
+  if (vp) { estado.verPor = vp.dataset.verpor; if (vp.dataset.verpor !== "cand") estado.grupo = ""; render(); return; }
+  const gr = e.target.closest("[data-grupo]");
+  if (gr) { estado.grupo = gr.dataset.grupo; estado.verPor = "cand"; render(); return; }
+  if (e.target.closest("[data-limpa]")) { estado.grupo = ""; render(); return; }
   const o = e.target.closest("[data-ord]");
   if (o) { estado.ordMun = o.dataset.ord; render(); return; }
   if (e.target.closest("#resBusca a")) fecharBusca();

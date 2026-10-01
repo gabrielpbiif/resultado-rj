@@ -70,6 +70,15 @@ def dump(caminho, obj):
         json.dump(obj, f, ensure_ascii=False, separators=(",", ":"))
 
 
+def lider_fed(v):
+    """cor da federação = cor do 1º partido da composição"""
+    primeiro = (v[3][0] if len(v) > 3 and v[3] else "").upper().replace(" ", "")
+    for np in v[2]:
+        if primeiro and primeiro.startswith(str(np)):
+            return np
+    return v[2][0] if v[2] else 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ano", type=int, required=True)
@@ -161,12 +170,26 @@ def main():
     info = {}  # (cargo, nr) -> dict
     vices = {}  # cargo -> nr -> [[cargo_vice, nome, partido]]
     partidos = {}  # nr -> sigla
+    fed_de = {}  # nr partido -> nr federação
+    feds = {}  # nr federação -> [nome, siglas, [partidos]]
     if a.cand:
         cc = csvs(a.cand, r"consulta_cand_.*_(RJ|BR)\.csv$", tmp)
         log("lendo candidatos", cc)
         rows = con.execute(f"""select CD_CARGO::int, NR_CANDIDATO::int, SQ_CANDIDATO, NM_URNA_CANDIDATO, SG_PARTIDO,
             NR_PARTIDO::int, DS_SIT_TOT_TURNO, NR_TURNO::int, DS_SITUACAO_CANDIDATURA, SG_UF
             from {leitura(cc)} where SG_UF in ('{UF}','BR')""").fetchall()
+        for np, nf, nm, comp in con.execute(f"""select distinct NR_PARTIDO::int, NR_FEDERACAO::int, NM_FEDERACAO,
+                DS_COMPOSICAO_FEDERACAO from {leitura(cc)} where NR_FEDERACAO not in ('-1','')""").fetchall():
+            fed_de[np] = nf
+            nome = re.sub(r"^FEDERA[ÇC][ÃA]O\s+", "", nm, flags=re.I)
+            nome = re.sub(r"\s+-\s+FE\s+\S+$", "", nome)
+            siglas = {(x.split("-", 1)[1] if re.match(r"^\d+-", x.strip()) else x).strip().upper() for x in comp.split("/")}
+            nome = " ".join(w.upper() if (w.upper() in siglas and len(w) <= 4 and w.upper() != "REDE") else (w.lower() if w.upper() in ("DA", "DE", "DO", "E") else w.capitalize())
+                            for w in nome.split())
+            membros = [(x.split("-", 1)[1] if re.match(r"^\d+-", x.strip()) else x).strip() for x in comp.split("/")]
+            ant = feds.get(nf, [None, None, []])
+            feds[nf] = [nome, "/".join(m.replace("PC do B", "PCdoB").replace("SOLIDARIEDADE", "SD") for m in membros),
+                        ant[2] + [np], membros]
         VICE = {2: 1, 4: 3, 9: 5, 10: 5}
         for cg, nr, sq, nmu, sg, np, sit, tur, sitc, uf in rows:
             if cg in VICE:
@@ -261,7 +284,8 @@ def main():
 
     turnos = [r[0] for r in con.execute("select distinct turno from st order by 1").fetchall()]
     idx = {"ano": a.ano, "uf": UF, "gerado": datetime.now(BRT).strftime("%d/%m/%Y %H:%M"),
-           "turnos": {}, "partidos": {str(k): [v, CORES.get(k, "#5b6475")] for k, v in partidos.items()},
+           "turnos": {}, "partidos": {str(k): [v, CORES.get(k, "#5b6475"), fed_de.get(k, 0)] for k, v in partidos.items()},
+           "fed": {str(k): [v[0], v[1], CORES.get(next((np for np in v[2] if partidos.get(np, "").upper().replace(" ", "") == v[3][0].upper().replace(" ", "")), v[2][0]), "#5b6475"), v[2]] for k, v in feds.items()},
            "mun": [], "fotos": len(com_foto), "modelo": modelo}
     dump(os.path.join(data, "vices.json"), {str(c): {str(nr): v for nr, v in d.items()} for c, d in vices.items()})
     aptos_mun = dict(con.execute("""select mun, sum(aptos) from st where turno=(select min(turno) from st)
